@@ -2,6 +2,15 @@
 
 A fast, lightweight Rust CLI utility that replaces standard `rm` with a fail-safe backup vault workflow on Linux. Deleted files, directories, and symlinks are verified via **SHA-256** and moved to an external **LUKS-encrypted** drive with full path metadata, ready to be inspected with `list` or recovered anytime via `unrm` with a `.restored_from_deleted` extension.
 
+```bash
+   .--.      ____        __        _____               _
+  |o_o |    / ___|  __ _/ _| ___  |_   _| __ __ _  ___| |__
+  |:_/ |    \___ \ / _` | |_ / _ \   | || '__/ _` |/ __| '_ \
+ //   \ \    ___) | (_| |  _|  __/   | || | | (_| |\__ \ | | |
+(|     | )  |____/ \__,_|_|  \___|   |_||_|  \__,_||___/_| |_|
+/'\_   _/`\  [ LUKS Encrypted Vault | rm -> SHA-256 -> unrm ]
+\___)=(___/
+```
 ## Features
 
 - **Fail-Safe Mount Protection:** Verifies the presence of a `.luks_vault_ready` marker file on your external encrypted drive before performing any deletion. If the drive is unmounted, `safe_trash` aborts immediately so you never accidentally write backups to your local root filesystem or lose data.

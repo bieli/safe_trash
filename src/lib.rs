@@ -419,3 +419,36 @@ format!("SHA-256 mismatch copying {:?}", src_entry_path),
 Ok(())
 }
     
+    /// Lists all items currently stored in the vault, sorted from newest to oldest.
+    pub fn list_entries(&self) -> Result<Vec<DeletedEntry>, String> {
+        self.ensure_ready()?;
+        let store = self.load_metadata();
+
+        let mut entries: Vec<DeletedEntry> = store.values().cloned().collect();
+        entries.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
+
+        if entries.is_empty() {
+            println!("Vault is empty.");
+        } else {
+            println!("{:<28} | {:<14} | ORIGINAL PATH", "DELETED AT", "TYPE / SHA256");
+            println!("{}", "-".repeat(85));
+            for entry in &entries {
+                let kind_or_hash = if entry.is_symlink {
+                    "SYMLINK".to_string()
+                } else if let Some(hash) = &entry.sha256 {
+                    format!("{}...", &hash[..10])
+                } else {
+                    "DIRECTORY".to_string()
+                };
+
+                println!(
+                    "{:<28} | {:<14} | {}",
+                    entry.deleted_at,
+                    kind_or_hash,
+                    entry.original_path.display()
+                );
+            }
+        }
+
+        Ok(entries)
+    }

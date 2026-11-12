@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -87,13 +87,11 @@ impl TrashVault {
         let mut deleted_paths = Vec::new();
 
         for target in targets {
-            // Ignore standard rm flags such as -rf, -r, -f
             if target.starts_with('-') {
                 continue;
             }
 
             let path = Path::new(target);
-            // Use symlink_metadata so broken symlinks are detected and targets are never followed
             let meta = match fs::symlink_metadata(path) {
                 Ok(m) => m,
                 Err(_) => {
@@ -138,15 +136,20 @@ impl TrashVault {
                     continue;
                 }
 
-                // Verify symlink target matches before removing original link
                 if fs::read_link(&vault_dest).ok().as_ref() != Some(&link_target) {
-                    eprintln!("Symlink verification failed for '{}'. Original preserved.", target);
+                    eprintln!(
+                        "Symlink verification failed for '{}'. Original preserved.",
+                        target
+                    );
                     let _ = fs::remove_file(&vault_dest);
                     continue;
                 }
 
                 if let Err(e) = fs::remove_file(&abs_path) {
-                    eprintln!("Copied symlink to vault, but failed to remove original: {}", e);
+                    eprintln!(
+                        "Copied symlink to vault, but failed to remove original: {}",
+                        e
+                    );
                 } else {
                     let entry = DeletedEntry {
                         original_path: abs_path.clone(),
@@ -170,7 +173,10 @@ impl TrashVault {
                 }
 
                 if let Err(e) = fs::remove_dir_all(&abs_path) {
-                    eprintln!("Copied directory to vault, but failed to remove original: {}", e);
+                    eprintln!(
+                        "Copied directory to vault, but failed to remove original: {}",
+                        e
+                    );
                 } else {
                     let entry = DeletedEntry {
                         original_path: abs_path.clone(),
@@ -184,7 +190,6 @@ impl TrashVault {
                     deleted_paths.push(abs_path);
                 }
             } else {
-                // Regular file: copy + SHA-256 verification before deletion
                 let src_hash = match compute_sha256(&abs_path) {
                     Ok(h) => h,
                     Err(e) => {
@@ -260,177 +265,113 @@ impl TrashVault {
             return Ok(None);
         }
 
-        // Sort from newest to oldest
         let mut entries: Vec<DeletedEntry> = store.values().cloned().collect();
-entries.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
-// Filter by query if provided, otherwise pick the most recently deleted entry
-let matches: Vec = match query {
-Some(q) => entries
-.into_iter()
-.filter(|e| e.original_path.to_string_lossy().contains(q))
-.collect(),
-None => vec![entries[0].clone()],
-};
-if matches.is_empty() {
-println!("No deleted files found matching your query.");
-return Ok(None);
-}
-let target_entry = if matches.len() == 1 {
-&matches[0]
-} else {
-let idx = match selected_index {
-Some(i) => i,
-None => {
-println!("Found multiple matching files:");
-for (i, entry) in matches.iter().enumerate() {
-println!(
-"[{}] {} (deleted at: {})",
-i,
-entry.original_path.display(),
-entry.deleted_at
-);
-}
-print!("Enter the number of the file to restore: ");
-io::stdout().flush().map_err(|e| e.to_string())?;
-let mut input = String::new();
-io::stdin()
-.read_line(&mut input)
-.map_err(|e| e.to_string())?;
-input
-.trim()
-.parse()
-.map_err(|_| "Invalid selection.".to_string())?
-}
-};
-matches
-.get(idx)
-.ok_or_else(|| "Selection out of range.".to_string())?
-};
-let vault_src = self.mount_point.join(&target_entry.vault_filename);
-let vault_meta = match fs::symlink_metadata(&vault_src) {
-Ok(m) => m,
-Err(_) => return Err("Error: File is missing from the external vault!".to_string()),
-};
-// Build restored path with .restored_from_deleted suffix
-let mut restored_path_os = target_entry.original_path.clone().into_os_string();
-restored_path_os.push(".restored_from_deleted");
-let restored_path = PathBuf::from(restored_path_os);
-if let Some(parent) = restored_path.parent() {
-let _ = fs::create_dir_all(parent);
-}
-if vault_meta.file_type().is_symlink() {
-let link_target = fs::read_link(&vault_src)
-.map_err(|e| format!("Failed to read symlink in vault: {}", e))?;
-unix_fs::symlink(&link_target, &restored_path)
-.map_err(|e| format!("Failed to restore symlink: {}", e))?;
-let _ = fs::remove_file(&vault_src);
-} else if vault_meta.is_dir() {
-copy_dir_verified(&vault_src, &restored_path)
-.map_err(|e| format!("Error restoring directory: {}", e))?;
-let _ = fs::remove_dir_all(&vault_src);
-} else {
-// Verify stored SHA-256 before and after restoring
-if let Some(expected_hash) = &target_entry.sha256 {
-let vault_hash = compute_sha256(&vault_src)
-.map_err(|e| format!("Failed to hash vault file: {}", e))?;
-if &vault_hash != expected_hash {
-return Err(
+        entries.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
+
+        let matches: Vec<DeletedEntry> = match query {
+            Some(q) => entries
+                .into_iter()
+                .filter(|e| e.original_path.to_string_lossy().contains(q))
+                .collect(),
+            None => vec![entries[0].clone()],
+        };
+        if matches.is_empty() {
+            println!("No deleted files found matching your query.");
+            return Ok(None);
+        }
+        let target_entry = if matches.len() == 1 {
+            &matches[0]
+        } else {
+            let idx = match selected_index {
+                Some(i) => i,
+                None => {
+                    println!("Found multiple matching files:");
+                    for (i, entry) in matches.iter().enumerate() {
+                        println!(
+                            "[{}] {} (deleted at: {})",
+                            i,
+                            entry.original_path.display(),
+                            entry.deleted_at
+                        );
+                    }
+                    print!("Enter the number of the file to restore: ");
+                    io::stdout().flush().map_err(|e| e.to_string())?;
+                    let mut input = String::new();
+                    io::stdin()
+                        .read_line(&mut input)
+                        .map_err(|e| e.to_string())?;
+                    input
+                        .trim()
+                        .parse()
+                        .map_err(|_| "Invalid selection.".to_string())?
+                }
+            };
+            matches
+                .get(idx)
+                .ok_or_else(|| "Selection out of range.".to_string())?
+        };
+        let vault_src = self.mount_point.join(&target_entry.vault_filename);
+        let vault_meta = match fs::symlink_metadata(&vault_src) {
+            Ok(m) => m,
+            Err(_) => return Err("Error: File is missing from the external vault!".to_string()),
+        };
+        let mut restored_path_os = target_entry.original_path.clone().into_os_string();
+        restored_path_os.push(".restored_from_deleted");
+        let restored_path = PathBuf::from(restored_path_os);
+        if let Some(parent) = restored_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if vault_meta.file_type().is_symlink() {
+            let link_target = fs::read_link(&vault_src)
+                .map_err(|e| format!("Failed to read symlink in vault: {}", e))?;
+            unix_fs::symlink(&link_target, &restored_path)
+                .map_err(|e| format!("Failed to restore symlink: {}", e))?;
+            let _ = fs::remove_file(&vault_src);
+        } else if vault_meta.is_dir() {
+            copy_dir_verified(&vault_src, &restored_path)
+                .map_err(|e| format!("Error restoring directory: {}", e))?;
+            let _ = fs::remove_dir_all(&vault_src);
+        } else {
+            if let Some(expected_hash) = &target_entry.sha256 {
+                let vault_hash = compute_sha256(&vault_src)
+                    .map_err(|e| format!("Failed to hash vault file: {}", e))?;
+                if &vault_hash != expected_hash {
+                    return Err(
 "CRITICAL: Vault file failed SHA-256 integrity check! Possible disk corruption."
 .to_string(),
 );
-}
-}
-fs::copy(&vault_src, &restored_path)
-.map_err(|e| format!("Error restoring file: {}", e))?;
-if let Some(expected_hash) = &target_entry.sha256 {
-let restored_hash = compute_sha256(&restored_path)
-.map_err(|e| format!("Failed to hash restored file: {}", e))?;
-if &restored_hash != expected_hash {
-return Err("Error: Restored file checksum mismatch!".to_string());
-}
-}
-let _ = fs::remove_file(&vault_src);
-}
-store.remove(&target_entry.vault_filename);
-self.save_metadata(&store)
-.map_err(|e| format!("Failed to update metadata: {}", e))?;
-println!("Restored file as: {}", restored_path.display());
-Ok(Some(restored_path))
-}
-}
-/// Resolves an absolute path lexically without dereferencing symlinks
-fn resolve_lexical_path(path: &Path) -> io::Result {
-let abs = if path.is_absolute() {
-path.to_path_buf()
-} else {
-env::current_dir()?.join(path)
-};
-let mut normalized = PathBuf::new();
-for component in abs.components() {
-match component {
-Component::CurDir => {}
-Component::ParentDir => {
-normalized.pop();
-}
-c => normalized.push(c.as_os_str()),
-}
-}
-Ok(normalized)
-}
-/// Computes streaming SHA-256 hex digest of a file
-pub fn compute_sha256(path: &Path) -> io::Result {
-let mut file = File::open(path)?;
-let mut hasher = Sha256::new();
-let mut buffer = [0u8; 65536];
-loop {
-let bytes_read = file.read(&mut buffer)?;
-if bytes_read == 0 {
-break;
-}
-hasher.update(&buffer[..bytes_read]);
-}
-Ok(format!("{:x}", hasher.finalize()))
-}
-/// Recursively copies directories while preserving symlinks and verifying SHA-256 of every file
-pub fn copy_dir_verified(src: &Path, dst: &Path) -> io::Result<()> {
-fs::create_dir_all(dst)?;
-for entry in fs::read_dir(src)? {
-let entry = entry?;
-let ty = entry.file_type()?;
-let src_entry_path = entry.path();
-let dst_entry_path = dst.join(entry.file_name());
-if ty.is_symlink() {
-let link_target = fs::read_link(&src_entry_path)?;
-unix_fs::symlink(&link_target, &dst_entry_path)?;
-} else if ty.is_dir() {
-copy_dir_verified(&src_entry_path, &dst_entry_path)?;
-} else {
-let src_hash = compute_sha256(&src_entry_path)?;
-fs::copy(&src_entry_path, &dst_entry_path)?;
-let dst_hash = compute_sha256(&dst_entry_path)?;
-if src_hash != dst_hash {
-return Err(io::Error::new(
-io::ErrorKind::InvalidData,
-format!("SHA-256 mismatch copying {:?}", src_entry_path),
-));
-}
-}
-}
-Ok(())
-}
-    
+                }
+            }
+            fs::copy(&vault_src, &restored_path)
+                .map_err(|e| format!("Error restoring file: {}", e))?;
+            if let Some(expected_hash) = &target_entry.sha256 {
+                let restored_hash = compute_sha256(&restored_path)
+                    .map_err(|e| format!("Failed to hash restored file: {}", e))?;
+                if &restored_hash != expected_hash {
+                    return Err("Error: Restored file checksum mismatch!".to_string());
+                }
+            }
+            let _ = fs::remove_file(&vault_src);
+        }
+        store.remove(&target_entry.vault_filename);
+        self.save_metadata(&store)
+            .map_err(|e| format!("Failed to update metadata: {}", e))?;
+        println!("Restored file as: {}", restored_path.display());
+        Ok(Some(restored_path))
+    }
     /// Lists all items currently stored in the vault, sorted from newest to oldest.
     pub fn list_entries(&self) -> Result<Vec<DeletedEntry>, String> {
         self.ensure_ready()?;
         let store = self.load_metadata();
-
         let mut entries: Vec<DeletedEntry> = store.values().cloned().collect();
         entries.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
-
         if entries.is_empty() {
             println!("Vault is empty.");
         } else {
-            println!("{:<28} | {:<14} | ORIGINAL PATH", "DELETED AT", "TYPE / SHA256");
+            println!(
+                "{:<28} | {:<14} | ORIGINAL PATH",
+                "DELETED AT", "TYPE / SHA256"
+            );
             println!("{}", "-".repeat(85));
             for entry in &entries {
                 let kind_or_hash = if entry.is_symlink {
@@ -440,7 +381,6 @@ Ok(())
                 } else {
                     "DIRECTORY".to_string()
                 };
-
                 println!(
                     "{:<28} | {:<14} | {}",
                     entry.deleted_at,
@@ -449,6 +389,139 @@ Ok(())
                 );
             }
         }
-
         Ok(entries)
     }
+    /// Purges vaulted items older than days days.
+    /// If dry_run is true, reports what would be deleted without removing anything.
+    pub fn clean_older_than(&self, days: i64, dry_run: bool) -> Result<Vec<DeletedEntry>, String> {
+        if days < 0 {
+            return Err("Days must be a non-negative integer.".to_string());
+        }
+        self.ensure_ready()?;
+        let mut store = self.load_metadata();
+        if store.is_empty() {
+            println!("Vault is already empty.");
+            return Ok(Vec::new());
+        }
+        let cutoff = Utc::now() - Duration::days(days);
+        let mut to_purge = Vec::new();
+        for entry in store.values() {
+            match DateTime::parse_from_rfc3339(&entry.deleted_at) {
+                Ok(deleted_time) => {
+                    if deleted_time.with_timezone(&Utc) < cutoff {
+                        to_purge.push(entry.clone());
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Could not parse timestamp '{}' for '{}': {}",
+                        entry.deleted_at,
+                        entry.original_path.display(),
+                        e
+                    );
+                }
+            }
+        }
+        to_purge.sort_by(|a, b| a.deleted_at.cmp(&b.deleted_at));
+        if to_purge.is_empty() {
+            println!("No vaulted items older than {} day(s) found.", days);
+            return Ok(Vec::new());
+        }
+        for entry in &to_purge {
+            if dry_run {
+                println!(
+                    "[DRY-RUN] Would purge: {} (deleted at: {})",
+                    entry.original_path.display(),
+                    entry.deleted_at
+                );
+                continue;
+            }
+            let vault_target = self.mount_point.join(&entry.vault_filename);
+            if let Ok(meta) = fs::symlink_metadata(&vault_target) {
+                let remove_res = if meta.is_dir() && !meta.file_type().is_symlink() {
+                    fs::remove_dir_all(&vault_target)
+                } else {
+                    fs::remove_file(&vault_target)
+                };
+                if let Err(e) = remove_res {
+                    eprintln!(
+                        "Failed to remove '{}' from vault: {}",
+                        entry.vault_filename, e
+                    );
+                    continue;
+                }
+            }
+            store.remove(&entry.vault_filename);
+            println!(
+                "Purged: {} (deleted at: {})",
+                entry.original_path.display(),
+                entry.deleted_at
+            );
+        }
+        if !dry_run {
+            self.save_metadata(&store)
+                .map_err(|e| format!("Failed to update metadata after clean: {}", e))?;
+        }
+        Ok(to_purge)
+    }
+}
+/// Resolves an absolute path lexically without dereferencing symlinks
+fn resolve_lexical_path(path: &Path) -> io::Result<PathBuf> {
+    let abs = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()?.join(path)
+    };
+    let mut normalized = PathBuf::new();
+    for component in abs.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            c => normalized.push(c.as_os_str()),
+        }
+    }
+    Ok(normalized)
+}
+/// Computes streaming SHA-256 hex digest of a file
+pub fn compute_sha256(path: &Path) -> io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 65536];
+    loop {
+        let bytes_read = file.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+/// Recursively copies directories while preserving symlinks and verifying SHA-256 of every file
+pub fn copy_dir_verified(src: &Path, dst: &Path) -> io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let src_entry_path = entry.path();
+        let dst_entry_path = dst.join(entry.file_name());
+        if ty.is_symlink() {
+            let link_target = fs::read_link(&src_entry_path)?;
+            unix_fs::symlink(&link_target, &dst_entry_path)?;
+        } else if ty.is_dir() {
+            copy_dir_verified(&src_entry_path, &dst_entry_path)?;
+        } else {
+            let src_hash = compute_sha256(&src_entry_path)?;
+            fs::copy(&src_entry_path, &dst_entry_path)?;
+            let dst_hash = compute_sha256(&dst_entry_path)?;
+            if src_hash != dst_hash {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("SHA-256 mismatch copying {:?}", src_entry_path),
+                ));
+            }
+        }
+    }
+    Ok(())
+}

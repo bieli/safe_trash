@@ -25,6 +25,9 @@ jobs:
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cryptsetup for LUKS end-to-end tests
+        run: sudo apt-get update && sudo apt-get install -y cryptsetup e2fsprogs
+
       - name: Check formatting (cargo fmt)
         run: cargo fmt --all -- --check
 

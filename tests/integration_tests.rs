@@ -136,3 +136,27 @@ fn test_restore_multiple_matches_by_index() {
         "report_v2.txt should remain in vault"
     );
 }
+
+#[test]
+fn test_list_entries_returns_sorted_items() {
+    let (_vault_dir, vault) = setup_ready_vault();
+    let work_dir = TempDir::new().unwrap();
+
+    let first = work_dir.path().join("first.txt");
+    let second = work_dir.path().join("second.txt");
+    fs::write(&first, "1").unwrap();
+    fs::write(&second, "2").unwrap();
+
+    vault
+        .safe_delete(&[first.to_string_lossy().to_string()])
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    vault
+        .safe_delete(&[second.to_string_lossy().to_string()])
+        .unwrap();
+
+    let listed = vault.list_entries().expect("list_entries failed");
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed.original_path.file_name().unwrap(), "second.txt");
+    assert_eq!(listed.original_path.file_name().unwrap(), "first.txt");
+}

@@ -59,7 +59,7 @@ touch /mnt/encrypted_backup/trash_vault/.luks_vault_ready
 Clone this repository and compile the release binary:
 
 ```bash
-git clone https://github.com
+git clone https://github.com/bieli/safe_trash
 cd safe_trash
 cargo build --release
 sudo cp target/release/safe_trash /usr/local/bin/

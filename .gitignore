@@ -1,0 +1,17 @@
+# Compiled binaries and build artifacts
+/target/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Local test vault artifacts
+*.restored_from_deleted
+metadata.json.tmp

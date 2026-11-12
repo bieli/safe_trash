@@ -137,6 +137,17 @@ sudo umount /mnt/encrypted_backup
 sudo cryptsetup close backup_vault
 ```
 
+### Purging Old Backups (`safe_trash clean`)
+Free up space on your encrypted external drive by permanently purging vaulted items older than a specified number of days:
+
+```bash
+# Preview what would be deleted without removing anything
+safe_trash clean 30 --dry-run
+
+# Permanently delete vaulted items older than 30 days
+safe_trash clean 30
+```
+
 ---
 
 ## Running Tests

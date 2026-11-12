@@ -45,8 +45,8 @@ fn check_vault_ready() {
 
     if !marker_file.exists() {
         eprintln!(
-            "CRITICAL ERROR: Encrypted LUKS drive is not mounted (missing marker file in {}).",
-            BACKUP_MOUNT_POINT
+            "CRITICAL ERROR: Encrypted LUKS drive is not mounted (missing marker file '{}' in {}).",
+            VAULT_MARKER_FILE, BACKUP_MOUNT_POINT
         );
         eprintln!("Unlock and mount the drive before using rm/unrm. Operation aborted to protect data.");
         process::exit(1);
